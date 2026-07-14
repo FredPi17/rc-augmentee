@@ -10,7 +10,8 @@ import threading
 import time
 import signal
 import sys
-from gpiozero import Servo, PWMLED, LED
+from collections import deque
+from gpiozero import Servo, PWMLED, LED, MCP3008
 from gpiozero.pins.pigpio import PiGPIOFactory
 
 # ─── Configuration ──────────────────────────────────────────────────────────────
@@ -37,10 +38,38 @@ GPIO_ESC = 18
 # LEDs éclairage
 GPIO_LED_FRONT = 24       # Feux de position avant (blanc)
 GPIO_LED_REAR = 25        # Feux de position arrière + freinage (rouge) — PWM
-GPIO_LED_REVERSE = 8      # Feux de recul (blanc)
+GPIO_LED_REVERSE = 23     # Feux de recul (blanc) — déplacé de GPIO8 (réservé au CE0 SPI du MCP3008)
 
 REAR_LIGHT_DIM = 0.2      # Intensité feux de position arrière (20%)
 REAR_LIGHT_BRAKE = 1.0    # Intensité freinage (100%)
+
+# ─── Monitoring batteries ───────────────────────────────────────────────────────
+# Batterie moteur : lue via un ADC MCP3008 (SPI, CE0=GPIO8) + pont diviseur.
+# Batterie Pi (power bank 5V régulé) : pas de %, seulement un flag sous-tension
+# remonté par le Pi lui-même (vcgencmd get_throttled).
+TELEMETRY_PORT = 5002       # Pi → PC : paquets JSON de télémétrie batterie
+TELEMETRY_RATE_HZ = 1       # fréquence d'envoi de la télémétrie
+SMOOTH_SAMPLES = 5          # taille de la moyenne glissante (la tension sague sous charge)
+BATTERY_LOW_PCT = 20        # seuil d'alerte batterie moteur basse
+
+ADC_MOTOR_CHANNEL = 0       # canal MCP3008 de la batterie moteur
+ADC_VREF = 3.3              # tension de référence de l'ADC (V)
+# Pont diviseur : Vadc = Vbat * R2/(R1+R2). Vbat = Vadc * (R1+R2)/R2.
+DIVIDER_R1 = 10000.0        # résistance haute (batterie → nœud), en ohms
+DIVIDER_R2 = 4700.0         # résistance basse (nœud → GND), en ohms
+DIVIDER_RATIO = (DIVIDER_R1 + DIVIDER_R2) / DIVIDER_R2   # ≈ 3.13
+
+# Batterie moteur NiMH — courbe tension-par-cellule → % (au repos, APPROXIMATIF ;
+# sous charge la tension chute, le % est donc indicatif). À ajuster au ressenti.
+NIMH_CELLS = 6              # nombre de cellules (pack 7,2 V nominal = 6 cellules)
+NIMH_CELL_CURVE = [        # (V/cellule, %) — points interpolés linéairement
+    (1.00, 0),
+    (1.10, 20),
+    (1.18, 40),
+    (1.22, 60),
+    (1.28, 80),
+    (1.35, 100),
+]
 
 # Plages PWM servos (en secondes)
 SERVO_MIN_PULSE = 0.5 / 1000   # 0.5 ms
@@ -66,8 +95,11 @@ state = {
     'phares': False,         # feux de position on/off (toggle depuis controller)
 }
 last_command_time = time.monotonic()
+last_client_addr = None       # dernière adresse du controller (pour l'envoi télémétrie)
 lock = threading.Lock()
 running = True
+
+_voltage_samples = deque(maxlen=SMOOTH_SAMPLES)  # moyenne glissante tension moteur
 
 # Machine à états pour la marche arrière ESC
 # États : 'forward', 'braking', 'neutral_wait', 'reverse'
@@ -103,6 +135,14 @@ esc_motor = Servo(
 led_front = LED(GPIO_LED_FRONT, pin_factory=factory)         # on/off simple
 led_rear = PWMLED(GPIO_LED_REAR, pin_factory=factory)        # PWM pour dim/bright
 led_reverse = LED(GPIO_LED_REVERSE, pin_factory=factory)     # on/off simple
+
+# ADC batterie moteur (MCP3008 en SPI). Optionnel : si le SPI/ADC est absent,
+# le serveur continue de tourner, monitoring batterie simplement désactivé.
+try:
+    mcp_motor = MCP3008(channel=ADC_MOTOR_CHANNEL)
+except Exception as e:  # noqa: BLE001 — on veut dégrader proprement
+    mcp_motor = None
+    print(f"[TELEM] ADC MCP3008 indisponible ({e}) — monitoring batterie désactivé")
 
 
 # ─── Fonctions utilitaires ──────────────────────────────────────────────────────
@@ -308,7 +348,7 @@ def stop_video_stream():
 
 def udp_listener():
     """Écoute les commandes UDP et met à jour l'état."""
-    global last_command_time
+    global last_command_time, last_client_addr
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -342,6 +382,7 @@ def udp_listener():
             continue
 
         with lock:
+            last_client_addr = addr  # pour l'envoi de la télémétrie batterie
             if cmd_type in ('direction', 'vitesse', 'camera'):
                 state[cmd_type] = value
                 last_command_time = time.monotonic()
@@ -354,6 +395,86 @@ def udp_listener():
 
     sock.close()
     print("[UDP] Listener arrêté")
+
+
+# ─── Monitoring batteries ───────────────────────────────────────────────────────
+
+def read_motor_voltage():
+    """Tension batterie moteur (V) via MCP3008 + pont diviseur, ou None si pas d'ADC."""
+    if mcp_motor is None:
+        return None
+    # mcp.value ∈ [0,1] = fraction de ADC_VREF ; on remonte à la tension batterie.
+    return mcp_motor.value * ADC_VREF * DIVIDER_RATIO
+
+
+def voltage_to_pct(voltage):
+    """Convertit une tension pack NiMH en % (courbe par cellule, interpolée)."""
+    if voltage is None or NIMH_CELLS <= 0:
+        return None
+    per_cell = voltage / NIMH_CELLS
+    if per_cell <= NIMH_CELL_CURVE[0][0]:
+        return 0
+    if per_cell >= NIMH_CELL_CURVE[-1][0]:
+        return 100
+    for (v0, p0), (v1, p1) in zip(NIMH_CELL_CURVE, NIMH_CELL_CURVE[1:]):
+        if v0 <= per_cell <= v1:
+            frac = (per_cell - v0) / (v1 - v0)
+            return round(p0 + frac * (p1 - p0))
+    return 0
+
+
+def pi_undervoltage():
+    """True si le Pi signale une sous-tension actuelle (vcgencmd get_throttled, bit 0)."""
+    try:
+        out = subprocess.run(
+            ['vcgencmd', 'get_throttled'],
+            capture_output=True, text=True, timeout=1.0,
+        )
+        # Format attendu : "throttled=0x50005"
+        val = int(out.stdout.strip().split('=')[1], 16)
+        return bool(val & 0x1)
+    except (subprocess.SubprocessError, ValueError, IndexError, OSError):
+        return False
+
+
+def build_telemetry():
+    """Construit le dict de télémétrie (tension lissée, %, sous-tension Pi)."""
+    v = read_motor_voltage()
+    if v is not None:
+        _voltage_samples.append(v)
+    smooth = sum(_voltage_samples) / len(_voltage_samples) if _voltage_samples else None
+    return {
+        'motor_v': round(smooth, 2) if smooth is not None else None,
+        'motor_pct': voltage_to_pct(smooth),
+        'pi_undervolt': pi_undervoltage(),
+    }
+
+
+def telemetry_loop():
+    """Lit les batteries et envoie la télémétrie au controller (~TELEMETRY_RATE_HZ)."""
+    interval = 1.0 / TELEMETRY_RATE_HZ
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    print(f"[TELEM] Télémétrie batterie → UDP {TELEMETRY_PORT}")
+
+    while running:
+        start = time.monotonic()
+        payload = build_telemetry()
+
+        with lock:
+            client = last_client_addr
+        if client is not None:
+            try:
+                sock.sendto(json.dumps(payload).encode('utf-8'), (client[0], TELEMETRY_PORT))
+            except OSError:
+                pass
+
+        dt = time.monotonic() - start
+        sleep_time = interval - dt
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+
+    sock.close()
+    print("[TELEM] Télémétrie arrêtée")
 
 
 # ─── Boucle d'application des sorties ─────────────────────────────────────────
@@ -410,6 +531,8 @@ def shutdown(signum=None, frame=None):
     led_front.close()
     led_rear.close()
     led_reverse.close()
+    if mcp_motor is not None:
+        mcp_motor.close()
 
     print("[SHUTDOWN] Terminé")
     sys.exit(0)
@@ -440,8 +563,10 @@ def main():
     # Lancement des threads
     thread_udp = threading.Thread(target=udp_listener, daemon=True)
     thread_output = threading.Thread(target=output_loop, daemon=True)
+    thread_telemetry = threading.Thread(target=telemetry_loop, daemon=True)
     thread_udp.start()
     thread_output.start()
+    thread_telemetry.start()
 
     print("[READY] Serveur prêt, en attente de commandes")
 

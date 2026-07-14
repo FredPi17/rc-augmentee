@@ -26,6 +26,8 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QPen, QKeyEven
 DEFAULT_PI_HOST = 'rc-car.local'
 DEFAULT_UDP_PORT = 5000
 DEFAULT_VIDEO_PORT = 5001
+TELEMETRY_PORT = 5002        # Pi → PC : télémétrie batteries (JSON)
+BATTERY_LOW_PCT = 20         # seuil d'alerte batterie moteur basse
 
 SEND_RATE_HZ = 30
 SPEED_STEP = 0.05
@@ -50,6 +52,7 @@ class Signals(QObject):
     frame_ready = pyqtSignal(np.ndarray)
     log_message = pyqtSignal(str)
     video_status = pyqtSignal(bool)
+    telemetry_ready = pyqtSignal(dict)
 
 
 signals = Signals()
@@ -576,6 +579,98 @@ class StatusIndicator(QWidget):
         p.end()
 
 
+class BatteryIndicator(QWidget):
+    """Jauge batterie : barre remplie au %, couleur selon le niveau, + tension."""
+
+    def __init__(self, label_text):
+        super().__init__()
+        self.label_text = label_text
+        self.pct = None
+        self.voltage = None
+        self.setFixedSize(170, 32)
+
+    def set_value(self, pct, voltage):
+        self.pct = pct
+        self.voltage = voltage
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Libellé
+        p.setPen(QColor(200, 200, 200))
+        p.setFont(QFont('Courier', 9))
+        p.drawText(0, 0, 56, 32, Qt.AlignmentFlag.AlignVCenter, self.label_text)
+
+        # Cadre de la barre
+        bx, by, bw, bh = 58, 7, 108, 18
+        p.setPen(QPen(QColor(120, 120, 120), 1))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(bx, by, bw, bh)
+
+        if self.pct is None:
+            p.setPen(QColor(120, 120, 120))
+            p.drawText(bx, by, bw, bh, Qt.AlignmentFlag.AlignCenter, "N/A")
+            p.end()
+            return
+
+        pct = max(0, min(100, int(self.pct)))
+        if pct > 50:
+            col = QColor(0, 200, 80)
+        elif pct >= BATTERY_LOW_PCT:
+            col = QColor(230, 160, 0)
+        else:
+            col = QColor(210, 50, 50)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(col)
+        p.drawRect(bx + 1, by + 1, int((bw - 2) * pct / 100), bh - 2)
+
+        # Texte % + tension par-dessus
+        txt = f"{pct}%"
+        if self.voltage is not None:
+            txt += f"  {self.voltage:.1f}V"
+        p.setPen(QColor(255, 255, 255))
+        p.setFont(QFont('Courier', 9, QFont.Weight.Bold))
+        p.drawText(bx, by, bw, bh, Qt.AlignmentFlag.AlignCenter, txt)
+        p.end()
+
+
+class TelemetryReceiver(threading.Thread):
+    """Reçoit la télémétrie batterie du Pi (UDP) et la transmet à l'UI via signal."""
+
+    def __init__(self, port):
+        super().__init__(daemon=True)
+        self.port = port
+
+    def run(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(('0.0.0.0', self.port))
+        except OSError as e:
+            log(f"[TELEM] Bind UDP {self.port} impossible : {e}")
+            return
+        sock.settimeout(0.5)
+        log(f"[TELEM] Écoute télémétrie sur UDP {self.port}")
+
+        while running:
+            try:
+                data, _ = sock.recvfrom(1024)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                payload = json.loads(data.decode('utf-8'))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            signals.telemetry_ready.emit(payload)
+
+        sock.close()
+        log("[TELEM] Récepteur télémétrie arrêté")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ÉCRAN DE CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -825,6 +920,19 @@ class CockpitScreen(QWidget):
         status_layout.addWidget(self.slow_status)
         right_col.addWidget(status_group)
 
+        # Batteries
+        batt_group = QGroupBox("Batteries")
+        batt_group.setStyleSheet(status_group.styleSheet())
+        batt_layout = QVBoxLayout(batt_group)
+        self.motor_battery = BatteryIndicator("Moteur")
+        self.pi_power_status = StatusIndicator("Alim Pi")
+        batt_layout.addWidget(self.motor_battery)
+        batt_layout.addWidget(self.pi_power_status)
+        right_col.addWidget(batt_group)
+
+        # État interne alerte batterie basse (pour ne logguer qu'au franchissement)
+        self._batt_low_alerted = False
+
         # Indicateur caméra
         cam_group = QGroupBox("Caméra")
         cam_group.setStyleSheet(status_group.styleSheet())
@@ -896,6 +1004,22 @@ class CockpitScreen(QWidget):
         self.lights_status.set_active(phares)
         self.slow_status.set_active(slow_mode)
 
+    def update_telemetry(self, data):
+        """Met à jour l'affichage batteries depuis un paquet de télémétrie du Pi."""
+        pct = data.get('motor_pct')
+        volt = data.get('motor_v')
+        self.motor_battery.set_value(pct, volt)
+        # Alim Pi : vert = OK, rouge = sous-tension signalée
+        self.pi_power_status.set_active(not data.get('pi_undervolt', False))
+
+        # Alerte batterie moteur basse — logguée seulement au franchissement du seuil
+        if pct is not None and pct < BATTERY_LOW_PCT:
+            if not self._batt_low_alerted:
+                log(f"[BATT] ⚠ Batterie moteur basse : {pct}%")
+                self._batt_low_alerted = True
+        elif pct is not None and pct >= BATTERY_LOW_PCT:
+            self._batt_low_alerted = False
+
     def display_frame(self, frame):
         h, w, ch = frame.shape
         qimg = QImage(frame.data, w, h, ch * w, QImage.Format.Format_RGB888)
@@ -951,6 +1075,7 @@ class MainWindow(QMainWindow):
         signals.frame_ready.connect(self.cockpit.display_frame)
         signals.log_message.connect(self.cockpit.append_log)
         signals.video_status.connect(self.cockpit.video_status.set_active)
+        signals.telemetry_ready.connect(self.cockpit.update_telemetry)
 
         # Timer refresh jauges (60 fps)
         self.display_timer = QTimer()
@@ -959,6 +1084,7 @@ class MainWindow(QMainWindow):
 
         self.udp_thread = None
         self.video_thread = None
+        self.telemetry_thread = None
 
     def start_connection(self, ip, udp_port, video_port, simulator_mode=False):
         global running, connected
@@ -984,6 +1110,10 @@ class MainWindow(QMainWindow):
             self.video_thread = VideoReceiverH264(ip, video_port)
         self.video_thread.start()
 
+        # Télémétrie batteries (le vrai Pi l'envoie ; le simulateur non → reste "N/A")
+        self.telemetry_thread = TelemetryReceiver(TELEMETRY_PORT)
+        self.telemetry_thread.start()
+
         self.display_timer.start()
         self.pi_addr = ip
         self.udp_port = udp_port
@@ -997,6 +1127,8 @@ class MainWindow(QMainWindow):
         self.display_timer.stop()
         self.cockpit.udp_status.set_active(False)
         self.cockpit.video_status.set_active(False)
+        self.cockpit.pi_power_status.set_active(False)
+        self.cockpit.motor_battery.set_value(None, None)
 
         # Reset state
         with lock:

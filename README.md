@@ -14,7 +14,8 @@ PC (controller.py)                         Pi Zero W (server.py)
 |  - Jauges / boussole      |              |  ESC moteur    (GPIO 18) |
 |  - Indicateurs status     |   TCP 5001   |  LED avant     (GPIO 24) |
 |  - Logs                   | <----------- |  LED arriere   (GPIO 25) |
-|                           |   H264 video |  LED recul     (GPIO 8)  |
+|  - Jauges batteries       |   H264 video |  LED recul     (GPIO 23) |
+|                           |   UDP 5002   |  MCP3008 ADC   (SPI)     |
 +---------------------------+              |  Pi Camera V1  (CSI)     |
                                            +---------------------------+
 ```
@@ -83,11 +84,32 @@ GPIO 13 (PWM1) ────────────> Servo camera (signal)
 GPIO 18        ────────────> ESC (signal)
 GPIO 24 ── 220 Ohm ── LED ─> GND   (blanc avant)
 GPIO 25 ── 220 Ohm ── LED ─> GND   (rouge arriere, PWM)
-GPIO 8  ── 220 Ohm ── LED ─> GND   (blanc recul)
+GPIO 23 ── 220 Ohm ── LED ─> GND   (blanc recul)
 Port CSI ──────────────────> Pi Camera V1 (nappe Zero)
+
+SPI (MCP3008 - monitoring batterie moteur) :
+GPIO 11 (SCLK) ────────────> MCP3008 CLK
+GPIO 10 (MOSI) ────────────> MCP3008 DIN
+GPIO 9  (MISO) ────────────> MCP3008 DOUT
+GPIO 8  (CE0)  ────────────> MCP3008 CS
+Batterie moteur + ──[R1 10k]──┬──[R2 4.7k]── GND
+                              └──────────────> MCP3008 CH0 (pont diviseur)
 ```
 
 Les servos et l'ESC sont alimentes par le BEC de l'ESC, pas par le Pi.
+Le feu de recul est passe de GPIO8 a GPIO23 (GPIO8 = CE0 SPI du MCP3008).
+Activer le SPI sur le Pi : `sudo raspi-config` ou `dtparam=spi=on`.
+
+## Monitoring batteries
+
+Deux batteries suivies :
+
+| Batterie | Mesure | Affichage |
+|----------|--------|-----------|
+| Moteur (NiMH) | MCP3008 CH0 + pont diviseur | Jauge % + tension (courbe NiMH, approximatif sous charge) |
+| Pi (power bank 5V) | `vcgencmd get_throttled` | Alim OK / sous-tension (pas de %, sortie 5V regulee) |
+
+Le serveur envoie la telemetrie au controller en UDP 5002 (~1 Hz).
 
 ## Eclairage
 
@@ -120,6 +142,6 @@ projet-rc-car.md      Cahier des charges
 
 ## Dependances
 
-**Pi Zero W** : `gpiozero`, `pigpio` + service `pigpiod`
+**Pi Zero W** : `gpiozero`, `pigpio`, `spidev` + service `pigpiod` + SPI activé
 
 **PC** : `PyQt6`, `opencv-python`, `numpy`, `ffmpeg`

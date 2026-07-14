@@ -18,7 +18,7 @@ warn() { echo "  ${YELLOW}!${RST} $1"; WARN=$((WARN+1)); }
 head() { echo; echo "${BOLD}${BLUE}$1${RST}"; }
 
 # GPIO utilisés par server.py
-GPIOS="12 13 18 24 25 8"
+GPIOS="12 13 18 24 25 23"
 UDP_PORT=5000
 VIDEO_PORT=5001
 
@@ -114,7 +114,18 @@ if id -nG "$USER" 2>/dev/null | grep -qw gpio; then
 else
   warn "utilisateur '$USER' pas dans le groupe gpio → sudo usermod -aG gpio $USER (puis relogin)"
 fi
-echo "  ${BLUE}i${RST} GPIO attendus par server.py : $GPIOS (dir=12 cam=13 esc=18 leds=24/25/8)"
+echo "  ${BLUE}i${RST} GPIO attendus par server.py : $GPIOS (dir=12 cam=13 esc=18 leds=24/25/23)"
+# SPI (MCP3008 pour le monitoring batterie moteur)
+if [ -e /dev/spidev0.0 ]; then
+  ok "SPI activé (/dev/spidev0.0) — MCP3008 batterie"
+else
+  warn "SPI non activé (/dev/spidev0.0 absent) → raspi-config ou 'dtparam=spi=on' (monitoring batterie désactivé)"
+fi
+if python3 -c "import spidev" 2>/dev/null; then
+  ok "module python 'spidev' importable"
+else
+  warn "module 'spidev' manquant → pip install spidev (requis par MCP3008)"
+fi
 
 # ─── 6. Réseau & ports ────────────────────────────────────────────────────────
 head "6. Réseau & ports"
