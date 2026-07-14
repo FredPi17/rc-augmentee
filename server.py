@@ -51,6 +51,11 @@ ESC_MIN_PULSE = 1.0 / 1000  # 1.0 ms = recul max
 ESC_MAX_PULSE = 2.0 / 1000  # 2.0 ms = avant max
 ESC_NEUTRAL_PULSE = 1.5 / 1000  # 1.5 ms = neutre
 
+# Détection d'arrêt : si la voiture est déjà immobile, on saute le freinage de la
+# séquence de recul (source d'un à-coup inutile — il n'y a rien à freiner à l'arrêt).
+STANDSTILL_EPS = 0.05    # sortie avant en-dessous = considérée nulle (arrêt)
+STANDSTILL_TIME = 0.3    # durée d'immobilité (s) avant d'autoriser un recul sans freinage
+
 
 # ─── État global ────────────────────────────────────────────────────────────────
 
@@ -68,6 +73,7 @@ running = True
 # États : 'forward', 'braking', 'neutral_wait', 'reverse'
 esc_state = 'forward'
 esc_last_transition = 0.0
+esc_zero_since = None  # instant où la sortie avant est retombée à ~0 (None = en mouvement)
 
 
 # ─── Initialisation matériel ────────────────────────────────────────────────────
@@ -113,56 +119,75 @@ def clamp(value, min_val=-1.0, max_val=1.0):
     return max(min_val, min(max_val, value))
 
 
-def apply_esc_value(target_speed):
+def _esc_state_machine(speed, now):
     """
-    Gère la logique double-tap pour la marche arrière ESC.
+    Machine à états double-tap pour la marche arrière ESC. Retourne la valeur
+    ESC *continue* à appliquer et met à jour esc_state.
 
-    Séquence pour reculer :
+    Séquence pour reculer depuis la marche avant :
     1. forward → braking  : envoie signal négatif (frein)
     2. braking → neutral  : retour au neutre (0)
     3. neutral → reverse  : envoie signal négatif (recul)
 
-    Cette séquence est automatique et transparente.
+    Si la voiture est DÉJÀ à l'arrêt (sortie avant ~nulle depuis STANDSTILL_TIME),
+    l'étape 1 est sautée : pas de freinage → pas d'à-coup, on passe directement
+    par le neutre avant le recul.
     """
-    global esc_state, esc_last_transition
-
-    now = time.monotonic()
-    speed = apply_dead_zone(clamp(target_speed))
+    global esc_state, esc_last_transition, esc_zero_since
 
     if speed >= 0:
-        # Avant ou arrêt — pas de logique spéciale
         esc_state = 'forward'
-        esc_motor.value = speed
-        return
+        # Suivi de l'immobilité : depuis quand la sortie avant est-elle ~nulle ?
+        if speed <= STANDSTILL_EPS:
+            if esc_zero_since is None:
+                esc_zero_since = now
+        else:
+            esc_zero_since = None
+        return speed
 
     # Le pilote veut reculer (speed < 0)
     if esc_state == 'forward':
-        # Étape 1 : envoie frein (signal négatif)
-        esc_motor.value = speed
+        stopped = esc_zero_since is not None and (now - esc_zero_since) >= STANDSTILL_TIME
+        if stopped:
+            # Déjà à l'arrêt → on saute le freinage (pas d'à-coup).
+            esc_state = 'neutral_wait'
+            esc_last_transition = now
+            print("[ESC] Déjà à l'arrêt → recul sans freinage")
+            return 0.0
         esc_state = 'braking'
         esc_last_transition = now
         print(f"[ESC] Freinage ({speed:+.2f})")
-
-    elif esc_state == 'braking':
-        # Attendre un peu en frein, puis passer au neutre
-        esc_motor.value = speed  # maintient le frein
+        return speed
+    if esc_state == 'braking':
         if now - esc_last_transition >= REVERSE_DELAY:
-            esc_motor.value = 0
             esc_state = 'neutral_wait'
             esc_last_transition = now
             print("[ESC] Neutre (transition)")
-
-    elif esc_state == 'neutral_wait':
-        # Attendre un peu au neutre, puis passer en marche arrière
-        esc_motor.value = 0  # maintient le neutre
+            return 0.0
+        return speed  # maintient le frein
+    if esc_state == 'neutral_wait':
         if now - esc_last_transition >= REVERSE_DELAY:
             esc_state = 'reverse'
             esc_last_transition = now
             print("[ESC] Marche arrière activée")
+        return 0.0  # maintient le neutre
+    if esc_state == 'reverse':
+        return speed
+    return 0.0
 
-    elif esc_state == 'reverse':
-        # Marche arrière active — envoie directement la valeur
-        esc_motor.value = speed
+
+def apply_esc_value(target_speed):
+    """
+    Applique la vitesse à l'ESC : zone morte sur l'intention du pilote, puis
+    machine à états avant/frein/neutre/recul.
+
+    Le mode manœuvre (vitesse lente plafonnée + commande momentanée) est géré
+    côté controller : il envoie simplement une petite vitesse fixe. Le serveur
+    ne fait aucune distinction — il applique la valeur reçue.
+    """
+    now = time.monotonic()
+    speed = apply_dead_zone(clamp(target_speed))
+    esc_motor.value = _esc_state_machine(speed, now)
 
 
 # Cache des sorties précédentes pour éviter les écritures GPIO inutiles

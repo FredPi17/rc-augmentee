@@ -23,13 +23,22 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QFont, QPen, QKeyEven
 
 # ─── Configuration par défaut ────────────────────────────────────────────────────
 
-DEFAULT_PI_HOST = 'raspberrypi.local'
+DEFAULT_PI_HOST = 'rc-car.local'
 DEFAULT_UDP_PORT = 5000
 DEFAULT_VIDEO_PORT = 5001
 
 SEND_RATE_HZ = 30
 SPEED_STEP = 0.05
 DIRECTION_STEP = 0.1
+
+# Mode manœuvre (touche M) : vitesse momentanée et plafonnée au minimum.
+# Le moteur ne tourne qu'à l'appui sur ↑/↓, à cette vitesse fixe, et s'arrête au
+# relâchement (aucune accumulation). Doivent rester > DEAD_ZONE serveur (0.1) sinon
+# le serveur les ignore. À AJUSTER selon le ressenti.
+# Avant et arrière sont dissociés : l'ESC a besoin d'un signal plus fort pour
+# déclencher la séquence de recul, alors qu'un niveau plus doux suffit à l'avant.
+MANEUVER_SPEED_FWD = 0.15   # marche avant : le mini qui fait tout juste avancer
+MANEUVER_SPEED_REV = 0.20   # marche arrière : + élevé pour déclencher le recul de l'ESC
 
 VIDEO_WIDTH = 640
 VIDEO_HEIGHT = 480
@@ -53,6 +62,7 @@ state = {
     'vitesse': 0.0,
     'camera': 0.0,
     'phares': False,
+    'slow_mode': False,
 }
 lock = threading.Lock()
 running = False
@@ -152,6 +162,8 @@ def update_state_from_keys():
         keys = set(pressed_keys)
 
     with lock:
+        slow_mode = state['slow_mode']
+
         # Direction
         if Qt.Key.Key_Left in keys and Qt.Key.Key_Right not in keys:
             state['direction'] = clamp(state['direction'] - DIRECTION_STEP)
@@ -161,10 +173,21 @@ def update_state_from_keys():
             state['direction'] = 0.0
 
         # Vitesse
-        if Qt.Key.Key_Up in keys and Qt.Key.Key_Down not in keys:
-            state['vitesse'] = clamp(state['vitesse'] + SPEED_STEP)
-        elif Qt.Key.Key_Down in keys and Qt.Key.Key_Up not in keys:
-            state['vitesse'] = clamp(state['vitesse'] - SPEED_STEP)
+        if slow_mode:
+            # Mode manœuvre : momentané, plafonné au minimum. Le moteur ne tourne
+            # qu'à l'appui, à vitesse mini fixe, et s'arrête au relâchement.
+            if Qt.Key.Key_Up in keys and Qt.Key.Key_Down not in keys:
+                state['vitesse'] = MANEUVER_SPEED_FWD
+            elif Qt.Key.Key_Down in keys and Qt.Key.Key_Up not in keys:
+                state['vitesse'] = -MANEUVER_SPEED_REV
+            else:
+                state['vitesse'] = 0.0
+        else:
+            # Conduite normale : accumulation par crans (maintien au relâchement).
+            if Qt.Key.Key_Up in keys and Qt.Key.Key_Down not in keys:
+                state['vitesse'] = clamp(state['vitesse'] + SPEED_STEP)
+            elif Qt.Key.Key_Down in keys and Qt.Key.Key_Up not in keys:
+                state['vitesse'] = clamp(state['vitesse'] - SPEED_STEP)
 
         # Espace = arrêt
         if Qt.Key.Key_Space in keys:
@@ -681,7 +704,7 @@ class ConfigScreen(QWidget):
 
         # Contrôles
         help_text = QLabel(
-            "↑↓ Vitesse  |  ←→ Direction  |  ZQSD Caméra  |  L Phares  |  ESPACE Stop"
+            "↑↓ Vitesse  |  ←→ Direction  |  ZQSD Caméra  |  L Phares  |  M Manœuvre  |  ESPACE Stop"
         )
         help_text.setStyleSheet("color: #666; margin-top: 20px; font-size: 11px;")
         help_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -795,9 +818,11 @@ class CockpitScreen(QWidget):
         self.udp_status = StatusIndicator("UDP")
         self.video_status = StatusIndicator("Vidéo")
         self.lights_status = StatusIndicator("Phares")
+        self.slow_status = StatusIndicator("Manœuvre")
         status_layout.addWidget(self.udp_status)
         status_layout.addWidget(self.video_status)
         status_layout.addWidget(self.lights_status)
+        status_layout.addWidget(self.slow_status)
         right_col.addWidget(status_group)
 
         # Indicateur caméra
@@ -864,10 +889,12 @@ class CockpitScreen(QWidget):
         with lock:
             d, v, c = state['direction'], state['vitesse'], state['camera']
             phares = state['phares']
+            slow_mode = state['slow_mode']
         self.speed_gauge.set_value(v)
         self.direction_compass.set_value(d)
         self.camera_indicator.set_value(c)
         self.lights_status.set_active(phares)
+        self.slow_status.set_active(slow_mode)
 
     def display_frame(self, frame):
         h, w, ch = frame.shape
@@ -1013,6 +1040,14 @@ class KeyInterceptor(QObject):
                 log(f"[LIGHTS] Phares {status}")
                 return True
 
+            # Toggle mode manœuvre sur appui de M
+            if key == Qt.Key.Key_M:
+                with lock:
+                    state['slow_mode'] = not state['slow_mode']
+                    status = "ON" if state['slow_mode'] else "OFF"
+                log(f"[ESC] Mode manœuvre {status}")
+                return True
+
             # Les touches de contrôle ne sont PAS propagées aux widgets
             if key in CONTROL_KEYS:
                 return True  # consommé
@@ -1030,7 +1065,7 @@ class KeyInterceptor(QObject):
 CONTROL_KEYS = {
     Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Left, Qt.Key.Key_Right,
     Qt.Key.Key_Z, Qt.Key.Key_Q, Qt.Key.Key_S, Qt.Key.Key_D,
-    Qt.Key.Key_Space, Qt.Key.Key_L,
+    Qt.Key.Key_Space, Qt.Key.Key_L, Qt.Key.Key_M,
 }
 
 
