@@ -2,6 +2,12 @@
 
 Suivi des prochaines étapes. Coche au fur et à mesure.
 
+## Tests & remise en route
+
+- [ ] **Retester toutes les fonctions** après remontage
+  - [ ] Rebrancher les lumières (feux avant / arrière / recul)
+  - [ ] Câbler le moniteur de tension de la batterie (MCP3008 + pont diviseur)
+
 ## Matériel & mise en service Pi
 
 - [ ] **Activer le SPI matériel** sur le Pi (`sudo raspi-config` → Interface → SPI, ou `dtparam=spi=on`) + reboot
@@ -17,6 +23,12 @@ Suivi des prochaines étapes. Coche au fur et à mesure.
 - [ ] Valider la lecture batterie (tension + %) au repos **et sous charge** (sag moteur)
 - [ ] Affiner `MANEUVER_SPEED_FWD` / `MANEUVER_SPEED_REV` et `STANDSTILL_TIME` au ressenti
 - [ ] Confirmer la calibration direction (`DIRECTION_INVERT`, `DIRECTION_TRIM`)
+
+## Prototypage & intégration
+
+- [ ] Réaliser une **carte prototype** (fils soudés) regroupant toute l'électronique
+- [ ] Concevoir un **vrai PCB optimisé** (routage propre) à envoyer en fabrication
+- [ ] **Prototype d'impression 3D** pour loger l'ensemble dans la voiture
 
 ## Idées / améliorations possibles
 
