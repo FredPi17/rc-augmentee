@@ -5,6 +5,7 @@ Reçoit les commandes UDP, pilote les servos/ESC, lance le stream vidéo.
 
 import socket
 import json
+import os
 import subprocess
 import threading
 import time
@@ -49,6 +50,7 @@ REAR_LIGHT_BRAKE = 1.0    # Intensité freinage (100%)
 # remonté par le Pi lui-même (vcgencmd get_throttled).
 TELEMETRY_PORT = 5002       # Pi → PC : paquets JSON de télémétrie batterie
 TELEMETRY_RATE_HZ = 1       # fréquence d'envoi de la télémétrie
+STATUS_FILE = '/tmp/rc_status.json'  # statut partagé lu par l'écran OLED (display.py)
 SMOOTH_SAMPLES = 5          # taille de la moyenne glissante (la tension sague sous charge)
 BATTERY_LOW_PCT = 20        # seuil d'alerte batterie moteur basse
 
@@ -138,11 +140,21 @@ led_reverse = LED(GPIO_LED_REVERSE, pin_factory=factory)     # on/off simple
 
 # ADC batterie moteur (MCP3008 en SPI). Optionnel : si le SPI/ADC est absent,
 # le serveur continue de tourner, monitoring batterie simplement désactivé.
-try:
-    mcp_motor = MCP3008(channel=ADC_MOTOR_CHANNEL)
-except Exception as e:  # noqa: BLE001 — on veut dégrader proprement
+#
+# IMPORTANT : on ne crée l'ADC QUE si le SPI matériel est disponible
+# (/dev/spidev0.0). Sinon gpiozero bascule silencieusement en SPI LOGICIEL
+# (bit-bang des GPIO 8-11 via une autre pin factory que pigpio), ce qui perturbe
+# les servos. On préfère désactiver franchement la batterie.
+if os.path.exists('/dev/spidev0.0'):
+    try:
+        mcp_motor = MCP3008(channel=ADC_MOTOR_CHANNEL)
+    except Exception as e:  # noqa: BLE001 — on veut dégrader proprement
+        mcp_motor = None
+        print(f"[TELEM] ADC MCP3008 indisponible ({e}) — monitoring batterie désactivé")
+else:
     mcp_motor = None
-    print(f"[TELEM] ADC MCP3008 indisponible ({e}) — monitoring batterie désactivé")
+    print("[TELEM] SPI matériel absent (/dev/spidev0.0) — monitoring batterie désactivé. "
+          "Activer le SPI : raspi-config ou 'dtparam=spi=on'.")
 
 
 # ─── Fonctions utilitaires ──────────────────────────────────────────────────────
@@ -450,8 +462,28 @@ def build_telemetry():
     }
 
 
+def write_status_file(payload):
+    """Écrit le statut courant dans STATUS_FILE (lu par l'écran OLED display.py).
+
+    Écriture atomique (fichier temporaire + rename) pour éviter les lectures
+    partielles. La fraîcheur du fichier (mtime) sert à display.py à savoir si
+    server.py tourne encore.
+    """
+    try:
+        with lock:
+            client_connected = (time.monotonic() - last_command_time) < 2.0
+        data = dict(payload)
+        data['client'] = client_connected
+        tmp = STATUS_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, STATUS_FILE)
+    except OSError:
+        pass
+
+
 def telemetry_loop():
-    """Lit les batteries et envoie la télémétrie au controller (~TELEMETRY_RATE_HZ)."""
+    """Lit les batteries, envoie la télémétrie au controller et publie le statut local."""
     interval = 1.0 / TELEMETRY_RATE_HZ
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     print(f"[TELEM] Télémétrie batterie → UDP {TELEMETRY_PORT}")
@@ -459,6 +491,7 @@ def telemetry_loop():
     while running:
         start = time.monotonic()
         payload = build_telemetry()
+        write_status_file(payload)  # pour l'écran OLED embarqué
 
         with lock:
             client = last_client_addr
@@ -533,6 +566,12 @@ def shutdown(signum=None, frame=None):
     led_reverse.close()
     if mcp_motor is not None:
         mcp_motor.close()
+
+    # Retire le fichier de statut → l'écran OLED voit tout de suite "server DOWN"
+    try:
+        os.remove(STATUS_FILE)
+    except OSError:
+        pass
 
     print("[SHUTDOWN] Terminé")
     sys.exit(0)
