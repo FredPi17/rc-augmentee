@@ -126,6 +126,28 @@ if python3 -c "import spidev" 2>/dev/null; then
 else
   warn "module 'spidev' manquant → pip install spidev (requis par MCP3008)"
 fi
+# I2C (écran OLED de statut, display.py)
+if [ -e /dev/i2c-1 ]; then
+  ok "I2C activé (/dev/i2c-1) — écran OLED"
+  if command -v i2cdetect >/dev/null && i2cdetect -y 1 2>/dev/null | grep -qiE '3c|3d'; then
+    ok "écran OLED détecté sur le bus I2C (0x3C/0x3D)"
+  else
+    warn "aucun écran I2C détecté à 0x3C/0x3D (i2cdetect -y 1) — câblage OLED ?"
+  fi
+else
+  warn "I2C non activé (/dev/i2c-1 absent) → 'dtparam=i2c_arm=on' (écran OLED désactivé)"
+fi
+if python3 -c "import luma.oled" 2>/dev/null; then
+  ok "module python 'luma.oled' importable"
+else
+  warn "module 'luma.oled' manquant → pip install luma.oled (requis par display.py)"
+fi
+# Service d'affichage
+if systemctl is-active --quiet rc-display 2>/dev/null; then
+  ok "service rc-display actif (écran de statut)"
+else
+  warn "service rc-display inactif → voir README (systemctl enable --now rc-display)"
+fi
 
 # ─── 6. Réseau & ports ────────────────────────────────────────────────────────
 head "6. Réseau & ports"

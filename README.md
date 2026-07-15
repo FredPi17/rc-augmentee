@@ -72,7 +72,25 @@ python3 controller.py
 | `S` | Camera arriere |
 | `D` | Camera droite |
 | `L` | Phares on/off |
+| `M` | Mode manoeuvre on/off |
 | `Espace` | Arret d'urgence |
+
+### Mode manoeuvre (`M`)
+
+Pour le placement precis (brancher une remorque, petites manoeuvres). Une fois active :
+
+- La vitesse est **momentanee** : le moteur ne tourne qu'a l'appui sur `↑`/`↓` et s'arrete au relachement (pas d'accumulation).
+- Elle est **plafonnee au minimum** (avant `0.15`, arriere `0.20` — l'arriere plus fort pour declencher le recul de l'ESC), reglable dans `controller.py`.
+- Un indicateur « Manoeuvre » s'allume dans le cockpit.
+
+### Affichage batteries
+
+Le cockpit affiche en continu (telemetrie UDP 5002 depuis le Pi) :
+
+- **Batterie moteur** : jauge % + tension (code couleur, alerte sous 20 %).
+- **Alim Pi** : indicateur OK / sous-tension.
+
+Voir la section [Monitoring batteries](#monitoring-batteries) pour le detail materiel.
 
 ## Cablage
 
@@ -94,6 +112,12 @@ GPIO 9  (MISO) ────────────> MCP3008 DOUT
 GPIO 8  (CE0)  ────────────> MCP3008 CS
 Batterie moteur + ──[R1 10k]──┬──[R2 4.7k]── GND
                               └──────────────> MCP3008 CH0 (pont diviseur)
+
+I2C (ecran OLED de statut) :
+3V3            ────────────> OLED VCC
+GND            ────────────> OLED GND
+GPIO 2  (SDA)  ────────────> OLED SDA
+GPIO 3  (SCL)  ────────────> OLED SCL
 ```
 
 Les servos et l'ESC sont alimentes par le BEC de l'ESC, pas par le Pi.
@@ -110,6 +134,40 @@ Deux batteries suivies :
 | Pi (power bank 5V) | `vcgencmd get_throttled` | Alim OK / sous-tension (pas de %, sortie 5V regulee) |
 
 Le serveur envoie la telemetrie au controller en UDP 5002 (~1 Hz).
+
+## Ecran de statut OLED
+
+Un petit ecran OLED I2C (SSD1306/SH1106 128x64) affiche l'etat du Pi au boot,
+via `display.py` (service systemd independant de server.py) :
+
+```
+RC-CAR
+IP 192.168.1.95
+Wifi MonReseau -52dBm
+srv:OK  cli:OK
+pgp:OK cam:OK spi:OK
+bat 7.4V 65%
+```
+
+- **IP + WiFi** : pour se connecter depuis le controller.
+- **srv / cli** : server.py demarre (via `/tmp/rc_status.json`) + client connecte.
+- **pgp / cam / spi** : sante systeme (pigpiod, camera, SPI).
+- **bat** : tension / % batterie moteur (relayes par server.py).
+
+Installation sur le Pi :
+
+```bash
+sudo raspi-config          # activer l'I2C (ou 'dtparam=i2c_arm=on')
+pip install -r requirements-pi.txt
+
+sudo cp rc-display.service /etc/systemd/system/
+# adapter User= et le chemin ExecStart= si besoin
+sudo systemctl enable --now rc-display
+```
+
+`display.py` est autonome : il affiche l'IP des le boot, meme si server.py n'est
+pas (encore) lance — dans ce cas `srv:X`. Driver/taille reglables en tete du script
+(`OLED_DRIVER`, `OLED_WIDTH/HEIGHT`).
 
 ## Eclairage
 
@@ -135,6 +193,9 @@ DIRECTION_TRIM = -0.18     # Offset de centrage des roues
 server.py             Serveur Pi Zero W
 controller.py         Application desktop PyQt6
 simulator.py          Simulateur 3D (test sans materiel)
+display.py            Ecran de statut OLED (Pi, service systemd)
+rc-display.service    Unite systemd de l'ecran de statut
+check_pi.sh           Diagnostic a lancer sur le Pi
 requirements-pi.txt   Dependances Pi
 requirements-pc.txt   Dependances PC
 projet-rc-car.md      Cahier des charges

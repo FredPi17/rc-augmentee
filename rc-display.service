@@ -1,0 +1,16 @@
+[Unit]
+Description=RC Car - ecran de statut OLED
+# Attend le reseau pour afficher une IP valide au boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fred
+# Adapter le chemin si le depot n'est pas dans /home/fred
+ExecStart=/usr/bin/python3 /home/fred/display.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
