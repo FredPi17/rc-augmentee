@@ -71,33 +71,21 @@
     <text x="257" y="352" font-size="10.5" fill="#2f6fb0">arrière → pin 22</text>
     <text x="257" y="368" font-size="10.5" fill="#2f6fb0">recul → pin 16</text>
 
-    <!-- CARD 3 : MCP3008 + batterie -->
-    <line x1="500" y1="260" x2="500" y2="145" stroke="#1e8e4f" stroke-width="2.5"/><circle cx="500" cy="145" r="4" fill="#1e8e4f"/>
-    <line x1="528" y1="260" x2="528" y2="200" stroke="#333" stroke-width="2.5"/><circle cx="528" cy="200" r="4.5" fill="#333"/>
-    <rect x="460" y="260" width="220" height="132" rx="8" fill="#eaf0f8" stroke="#3563a8" stroke-width="1.5"/>
-    <text x="472" y="280" font-size="11.5" font-weight="700" fill="#1c1c1e">Batterie moteur → MCP3008</text>
-    <text x="472" y="298" font-size="9.5" fill="#444">VDD+VREF → 3V3 · AGND+DGND → GND</text>
-    <text x="472" y="314" font-size="10" fill="#2f6fb0">CLK→23 DOUT→21 DIN→19 CS→24</text>
-    <text x="472" y="331" font-size="9.5" fill="#444">+ condo 100 nF entre VDD et GND</text>
-    <text x="472" y="350" font-size="9.5" fill="#444">Batt+ →10kΩ→ nœud →4,7kΩ→ GND</text>
-    <text x="472" y="367" font-size="10.5" fill="#2f6fb0">nœud → CH0 (broche 1 MCP)</text>
-    <text x="472" y="384" font-size="9.5" fill="#a33">Batt− → masse commune</text>
-
     <!-- CARD 4 : OLED -->
-    <line x1="720" y1="260" x2="720" y2="145" stroke="#1e8e4f" stroke-width="2.5"/><circle cx="720" cy="145" r="4" fill="#1e8e4f"/>
-    <line x1="748" y1="260" x2="748" y2="200" stroke="#333" stroke-width="2.5"/><circle cx="748" cy="200" r="4.5" fill="#333"/>
-    <rect x="690" y="260" width="194" height="132" rx="8" fill="#f2ecf7" stroke="#7a4fa3" stroke-width="1.5"/>
-    <text x="702" y="280" font-size="12" font-weight="700" fill="#1c1c1e">Écran OLED I²C</text>
-    <text x="702" y="300" font-size="10.5" fill="#444">VCC → 3V3</text>
-    <text x="702" y="316" font-size="10.5" fill="#444">GND → masse</text>
-    <text x="702" y="336" font-size="10.5" fill="#2f6fb0">SDA → pin 3</text>
-    <text x="702" y="352" font-size="10.5" fill="#2f6fb0">SCL → pin 5</text>
+    <line x1="490" y1="260" x2="490" y2="145" stroke="#1e8e4f" stroke-width="2.5"/><circle cx="490" cy="145" r="4" fill="#1e8e4f"/>
+    <line x1="518" y1="260" x2="518" y2="200" stroke="#333" stroke-width="2.5"/><circle cx="518" cy="200" r="4.5" fill="#333"/>
+    <rect x="460" y="260" width="200" height="132" rx="8" fill="#f2ecf7" stroke="#7a4fa3" stroke-width="1.5"/>
+    <text x="472" y="280" font-size="12" font-weight="700" fill="#1c1c1e">Écran OLED I²C</text>
+    <text x="472" y="300" font-size="10.5" fill="#444">VCC → 3V3</text>
+    <text x="472" y="316" font-size="10.5" fill="#444">GND → masse</text>
+    <text x="472" y="336" font-size="10.5" fill="#2f6fb0">SDA → pin 3</text>
+    <text x="472" y="352" font-size="10.5" fill="#2f6fb0">SCL → pin 5</text>
   </svg>
 
   <div class="notes">
-    <p><b>Entrées d'alimentation :</b> ① Power bank USB → alimente le Pi. ② Batterie de l'ESC (BEC) → alimente le rail VSERVO (servos + ESC). ③ Batterie moteur (NiMH) → mesurée via le pont diviseur + MCP3008.</p>
-    <p><b class="warn">Masse commune obligatoire :</b> relie ensemble les GND du Pi, de l'ESC/BEC, de la batterie moteur, des LED et du MCP3008 — c'est le seul point commun entre les alimentations.</p>
-    <p><b>Avant de brancher le Pi :</b> vérifie au multimètre qu'il n'y a PAS de court entre 3V3, VSERVO et GND. Rappel : le SPI doit être activé pour le MCP3008.</p>
+    <p><b>Entrées d'alimentation :</b> ① Power bank USB → alimente le Pi. ② Batterie de l'ESC (BEC) → alimente le rail VSERVO (servos + ESC). </p>
+    <p><b class="warn">Masse commune obligatoire :</b> relie ensemble les GND du Pi, de l'ESC/BEC, des LED et des servos — c'est le seul point commun entre les alimentations.</p>
+    <p><b>Avant de brancher le Pi :</b> vérifie au multimètre qu'il n'y a PAS de court entre 3V3, VSERVO et GND.</p>
   </div>
 </div>
 </body>

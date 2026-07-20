@@ -14,8 +14,8 @@ PC (controller.py)                         Pi Zero W (server.py)
 |  - Jauges / boussole      |              |  ESC moteur    (GPIO 18) |
 |  - Indicateurs status     |   TCP 5001   |  LED avant     (GPIO 24) |
 |  - Logs                   | <----------- |  LED arriere   (GPIO 25) |
-|  - Jauges batteries       |   H264 video |  LED recul     (GPIO 23) |
-|                           |   UDP 5002   |  MCP3008 ADC   (SPI)     |
+|  - Indicateur alim Pi     |   H264 video |  LED recul     (GPIO 23) |
+|                           |   UDP 5002   |  Ecran OLED    (I2C)     |
 +---------------------------+              |  Pi Camera V1  (CSI)     |
                                            +---------------------------+
 ```
@@ -83,14 +83,11 @@ Pour le placement precis (brancher une remorque, petites manoeuvres). Une fois a
 - Elle est **plafonnee au minimum** (avant `0.15`, arriere `0.20` — l'arriere plus fort pour declencher le recul de l'ESC), reglable dans `controller.py`.
 - Un indicateur « Manoeuvre » s'allume dans le cockpit.
 
-### Affichage batteries
+### Affichage alimentation
 
 Le cockpit affiche en continu (telemetrie UDP 5002 depuis le Pi) :
 
-- **Batterie moteur** : jauge % + tension (code couleur, alerte sous 20 %).
-- **Alim Pi** : indicateur OK / sous-tension.
-
-Voir la section [Monitoring batteries](#monitoring-batteries) pour le detail materiel.
+- **Alim Pi** : indicateur OK / sous-tension (detecte via `vcgencmd get_throttled`).
 
 ## Cablage
 
@@ -105,14 +102,6 @@ GPIO 25 ── 220 Ohm ── LED ─> GND   (rouge arriere, PWM)
 GPIO 23 ── 220 Ohm ── LED ─> GND   (blanc recul)
 Port CSI ──────────────────> Pi Camera V1 (nappe Zero)
 
-SPI (MCP3008 - monitoring batterie moteur) :
-GPIO 11 (SCLK) ────────────> MCP3008 CLK
-GPIO 10 (MOSI) ────────────> MCP3008 DIN
-GPIO 9  (MISO) ────────────> MCP3008 DOUT
-GPIO 8  (CE0)  ────────────> MCP3008 CS
-Batterie moteur + ──[R1 10k]──┬──[R2 4.7k]── GND
-                              └──────────────> MCP3008 CH0 (pont diviseur)
-
 I2C (ecran OLED de statut) :
 3V3            ────────────> OLED VCC
 GND            ────────────> OLED GND
@@ -121,19 +110,17 @@ GPIO 3  (SCL)  ────────────> OLED SCL
 ```
 
 Les servos et l'ESC sont alimentes par le BEC de l'ESC, pas par le Pi.
-Le feu de recul est passe de GPIO8 a GPIO23 (GPIO8 = CE0 SPI du MCP3008).
-Activer le SPI sur le Pi : `sudo raspi-config` ou `dtparam=spi=on`.
 
-## Monitoring batteries
+## Alimentation
 
-Deux batteries suivies :
+| Source | Role |
+|--------|------|
+| Power bank USB 5 V | Alimente le Pi (sortie regulee : pas de % de charge lisible) |
+| BEC de l'ESC | Alimente les servos et l'ESC (rail VSERVO) — jamais le Pi |
 
-| Batterie | Mesure | Affichage |
-|----------|--------|-----------|
-| Moteur (NiMH) | MCP3008 CH0 + pont diviseur | Jauge % + tension (courbe NiMH, approximatif sous charge) |
-| Pi (power bank 5V) | `vcgencmd get_throttled` | Alim OK / sous-tension (pas de %, sortie 5V regulee) |
-
-Le serveur envoie la telemetrie au controller en UDP 5002 (~1 Hz).
+Le Pi remonte un flag de **sous-tension** (`vcgencmd get_throttled`) au controller
+via la telemetrie UDP 5002 (~1 Hz), affiche en indicateur "Alim Pi".
+Une **masse commune** relie Pi, ESC/BEC, LED et servos.
 
 ## Ecran de statut OLED
 
@@ -145,14 +132,14 @@ RC-CAR
 IP 192.168.1.95
 Wifi MonReseau -52dBm
 srv:OK  cli:OK
-pgp:OK cam:OK spi:OK
-bat 7.4V 65%
+pgp:OK  cam:OK
+alim Pi: OK
 ```
 
 - **IP + WiFi** : pour se connecter depuis le controller.
 - **srv / cli** : server.py demarre (via `/tmp/rc_status.json`) + client connecte.
-- **pgp / cam / spi** : sante systeme (pigpiod, camera, SPI).
-- **bat** : tension / % batterie moteur (relayes par server.py).
+- **pgp / cam** : sante systeme (pigpiod, camera).
+- **alim Pi** : OK / sous-tension (relaye par server.py).
 
 Installation sur le Pi :
 
@@ -203,6 +190,6 @@ projet-rc-car.md      Cahier des charges
 
 ## Dependances
 
-**Pi Zero W** : `gpiozero`, `pigpio`, `spidev` + service `pigpiod` + SPI activé
+**Pi Zero W** : `gpiozero`, `pigpio`, `luma.oled` + service `pigpiod` + I2C activé
 
 **PC** : `PyQt6`, `opencv-python`, `numpy`, `ffmpeg`

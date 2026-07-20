@@ -43,7 +43,7 @@
 <body>
 <div class="w">
   <h3>Plan de câblage — Pi Zero W (broches physiques)</h3>
-  <div class="sub">« pinN » = numéro de broche compté sur le header 40 broches du Pi. GND : n'importe laquelle des broches GND. Voir carte-pcb.md.</div>
+  <div class="sub">« pinN » = numéro de broche compté sur le header 40 broches du Pi. GND : n'importe laquelle des broches GND. </div>
 
   <div class="grid">
     <div class="hdr">
@@ -52,7 +52,6 @@
       <div class="legend">
         <span><i class="dot c-sv"></i>Servos/ESC</span>
         <span><i class="dot c-ld"></i>LED</span>
-        <span><i class="dot c-mc"></i>MCP3008</span>
         <span><i class="dot c-ol"></i>OLED</span>
         <span><i class="dot c-p3"></i>3V3</span>
         <span><i class="dot c-gnd"></i>GND</span>
@@ -78,25 +77,6 @@
           <tr><td>LED recul</td><td>pin 16 (GPIO23)</td></tr>
         </table>
       </div>
-      <div class="card k-mc">
-        <h4>MCP3008 (batterie) — <span class="pill">broche MCP → Pi</span></h4>
-        <table>
-          <tr><td>16 VDD &amp; 15 VREF</td><td>3V3 (pin 1)</td></tr>
-          <tr><td>14 AGND &amp; 9 DGND</td><td>GND</td></tr>
-          <tr><td>13 CLK</td><td>pin 23 (GPIO11)</td></tr>
-          <tr><td>12 DOUT</td><td>pin 21 (GPIO9)</td></tr>
-          <tr><td>11 DIN</td><td>pin 19 (GPIO10)</td></tr>
-          <tr><td>10 CS</td><td>pin 24 (GPIO8)</td></tr>
-          <tr><td>1 CH0 ← nœud du pont</td><td>—</td></tr>
-        </table>
-      </div>
-      <div class="card k-mc">
-        <h4>Pont diviseur batterie moteur</h4>
-        <table>
-          <tr><td>Batt+ → R1 10 kΩ → nœud</td><td>→ MCP 1 (CH0)</td></tr>
-          <tr><td>nœud → R2 4,7 kΩ → GND</td><td>+ condo 100 nF VDD↔GND</td></tr>
-        </table>
-      </div>
       <div class="card k-ol">
         <h4>Écran OLED I²C — 4 fils</h4>
         <table>
@@ -111,8 +91,8 @@
 
   <div class="note">
     <b>Alim :</b> le fil <b>+V rouge</b> des servos/ESC va au rail <b>VSERVO</b> = sortie <b>BEC de l'ESC</b>, <b>jamais</b> au 5 V du Pi (Pi sur power bank).
-    <b>GND commun</b> : relie ensemble les masses ESC/BEC, batterie, LED, MCP3008 et une broche GND du Pi.
-    <b>SPI</b> à activer sur le Pi pour le MCP3008.
+    <b>GND commun</b> : relie ensemble les masses ESC/BEC, LED, servos, OLED et une broche GND du Pi.
+   
   </div>
 </div>
 <script>
@@ -121,8 +101,8 @@
       1:["3V3","p3"],2:["5V","x"],3:["GPIO2 · SDA","ol"],4:["5V","x"],5:["GPIO3 · SCL","ol"],
       6:["GND","gnd"],7:["GPIO4","x"],8:["GPIO14","x"],9:["GND","gnd"],10:["GPIO15","x"],
       11:["GPIO17","x"],12:["GPIO18 · ESC","sv"],13:["GPIO27","x"],14:["GND","gnd"],15:["GPIO22","x"],
-      16:["GPIO23 · recul","ld"],17:["3V3","p3"],18:["GPIO24 · avant","ld"],19:["GPIO10 · DIN","mc"],20:["GND","gnd"],
-      21:["GPIO9 · DOUT","mc"],22:["GPIO25 · arr.","ld"],23:["GPIO11 · CLK","mc"],24:["GPIO8 · CS","mc"],25:["GND","gnd"],
+      16:["GPIO23 · recul","ld"],17:["3V3","p3"],18:["GPIO24 · avant","ld"],19:["GPIO10","x"],20:["GND","gnd"],
+      21:["GPIO9","x"],22:["GPIO25 · arr.","ld"],23:["GPIO11","x"],24:["GPIO8","x"],25:["GND","gnd"],
       26:["GPIO7","x"],27:["ID_SD","x"],28:["ID_SC","x"],29:["GPIO5","x"],30:["GND","gnd"],
       31:["GPIO6","x"],32:["GPIO12 · dir.","sv"],33:["GPIO13 · cam.","sv"],34:["GND","gnd"],35:["GPIO19","x"],
       36:["GPIO16","x"],37:["GPIO26","x"],38:["GPIO20","x"],39:["GND","gnd"],40:["GPIO21","x"]
