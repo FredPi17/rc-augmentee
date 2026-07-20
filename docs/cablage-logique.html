@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Câblage logique — Voiture RC (Pi Zero W)</title>
+<style>
+  body{margin:0;padding:24px;background:#eceae6;display:flex;justify-content:center}
+  @media (prefers-color-scheme:dark){body{background:#141416}}
+  .w{--bg:#faf9f7;--pan:#fff;--ink:#1c1c1e;--mut:#6b6b70;--ln:#d9d7d2;
+    --p3:#3a7d5d;--gnd:#555;--sv:#c07a1e;--ld:#b5462e;--mc:#3563a8;--ol:#7a4fa3;--x:#b8b6b1;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);
+    background:var(--bg);border:1px solid var(--ln);border-radius:12px;padding:18px;max-width:840px;width:100%}
+  @media (prefers-color-scheme:dark){.w{--bg:#1b1b1d;--pan:#252528;--ink:#ececf0;--mut:#9a9aa2;--ln:#3a3a3f;--x:#5a5a60}}
+  .w h3{margin:0 0 2px;font-size:16px}.w .sub{color:var(--mut);font-size:12px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
+  @media (max-width:640px){.grid{grid-template-columns:1fr}}
+  .hdr{background:var(--pan);border:1px solid var(--ln);border-radius:10px;padding:10px}
+  .hdr .cap{font-size:11px;color:var(--mut);text-align:center;margin-bottom:6px}
+  .rows{display:flex;flex-direction:column;gap:3px}
+  .row{display:grid;grid-template-columns:1fr 22px 22px 1fr;align-items:center;gap:4px}
+  .pin{font-family:ui-monospace,Menlo,monospace;font-size:10px;font-weight:700;color:#fff;
+    width:22px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:var(--x)}
+  .lbl{font-size:10.5px;line-height:1.1}.lbl.r{text-align:left}.lbl.l{text-align:right}
+  .lbl small{color:var(--mut);font-size:9px}
+  .u{color:var(--mut)}
+  .c-p3{background:var(--p3)}.c-gnd{background:var(--gnd)}.c-sv{background:var(--sv)}
+  .c-ld{background:var(--ld)}.c-mc{background:var(--mc)}.c-ol{background:var(--ol)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px;font-size:10.5px;color:var(--mut)}
+  .legend span{display:inline-flex;align-items:center;gap:4px}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .cards{display:flex;flex-direction:column;gap:9px}
+  .card{background:var(--pan);border:1px solid var(--ln);border-left-width:4px;border-radius:8px;padding:8px 11px}
+  .card h4{margin:0 0 5px;font-size:12.5px}
+  .card table{width:100%;border-collapse:collapse;font-size:11px}
+  .card td{padding:1.5px 0}.card td:last-child{text-align:right;font-family:ui-monospace,Menlo,monospace;font-weight:600;white-space:nowrap}
+  .k-sv{border-left-color:var(--sv)}.k-ld{border-left-color:var(--ld)}.k-mc{border-left-color:var(--mc)}.k-ol{border-left-color:var(--ol)}
+  .note{margin-top:12px;font-size:11px;color:var(--mut);line-height:1.5;border-top:1px solid var(--ln);padding-top:9px}
+  .note b{color:var(--ink)}
+  .pill{font-family:ui-monospace,Menlo,monospace;font-size:10px;background:color-mix(in srgb,var(--mc) 15%,var(--pan));padding:0 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="w">
+  <h3>Plan de câblage — Pi Zero W (broches physiques)</h3>
+  <div class="sub">« pinN » = numéro de broche compté sur le header 40 broches du Pi. GND : n'importe laquelle des broches GND. </div>
+
+  <div class="grid">
+    <div class="hdr">
+      <div class="cap">Header 40 broches — impair à gauche · pair à droite</div>
+      <div class="rows" id="rows"></div>
+      <div class="legend">
+        <span><i class="dot c-sv"></i>Servos/ESC</span>
+        <span><i class="dot c-ld"></i>LED</span>
+        <span><i class="dot c-ol"></i>OLED</span>
+        <span><i class="dot c-p3"></i>3V3</span>
+        <span><i class="dot c-gnd"></i>GND</span>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card k-sv">
+        <h4>Servos &amp; ESC — connecteur 3 fils (signal / +V / GND)</h4>
+        <table>
+          <tr><td>ESC — signal</td><td>pin 12 (GPIO18)</td></tr>
+          <tr><td>Servo direction — signal</td><td>pin 32 (GPIO12)</td></tr>
+          <tr><td>Servo caméra — signal</td><td>pin 33 (GPIO13)</td></tr>
+          <tr><td>fil +V des 3 (rouge)</td><td>VSERVO = BEC ESC</td></tr>
+          <tr><td>fil GND des 3 (noir)</td><td>GND</td></tr>
+        </table>
+      </div>
+      <div class="card k-ld">
+        <h4>LED — chacune : GPIO → 220 Ω → LED(+), LED(−) → GND</h4>
+        <table>
+          <tr><td>LED avant</td><td>pin 18 (GPIO24)</td></tr>
+          <tr><td>LED arrière (PWM)</td><td>pin 22 (GPIO25)</td></tr>
+          <tr><td>LED recul</td><td>pin 16 (GPIO23)</td></tr>
+        </table>
+      </div>
+      <div class="card k-ol">
+        <h4>Écran OLED I²C — 4 fils</h4>
+        <table>
+          <tr><td>VCC</td><td>3V3</td></tr>
+          <tr><td>GND</td><td>GND</td></tr>
+          <tr><td>SDA</td><td>pin 3 (GPIO2)</td></tr>
+          <tr><td>SCL</td><td>pin 5 (GPIO3)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Alim :</b> le fil <b>+V rouge</b> des servos/ESC va au rail <b>VSERVO</b> = sortie <b>BEC de l'ESC</b>, <b>jamais</b> au 5 V du Pi (Pi sur power bank).
+    <b>GND commun</b> : relie ensemble les masses ESC/BEC, LED, servos, OLED et une broche GND du Pi.
+   
+  </div>
+</div>
+<script>
+  (function(){
+    var P={
+      1:["3V3","p3"],2:["5V","x"],3:["GPIO2 · SDA","ol"],4:["5V","x"],5:["GPIO3 · SCL","ol"],
+      6:["GND","gnd"],7:["GPIO4","x"],8:["GPIO14","x"],9:["GND","gnd"],10:["GPIO15","x"],
+      11:["GPIO17","x"],12:["GPIO18 · ESC","sv"],13:["GPIO27","x"],14:["GND","gnd"],15:["GPIO22","x"],
+      16:["GPIO23 · recul","ld"],17:["3V3","p3"],18:["GPIO24 · avant","ld"],19:["GPIO10","x"],20:["GND","gnd"],
+      21:["GPIO9","x"],22:["GPIO25 · arr.","ld"],23:["GPIO11","x"],24:["GPIO8","x"],25:["GND","gnd"],
+      26:["GPIO7","x"],27:["ID_SD","x"],28:["ID_SC","x"],29:["GPIO5","x"],30:["GND","gnd"],
+      31:["GPIO6","x"],32:["GPIO12 · dir.","sv"],33:["GPIO13 · cam.","sv"],34:["GND","gnd"],35:["GPIO19","x"],
+      36:["GPIO16","x"],37:["GPIO26","x"],38:["GPIO20","x"],39:["GND","gnd"],40:["GPIO21","x"]
+    };
+    var host=document.getElementById("rows");
+    for(var i=1;i<=39;i+=2){
+      var L=P[i],R=P[i+1];
+      var row=document.createElement("div");row.className="row";
+      row.innerHTML=
+        '<div class="lbl l '+(L[1]=="x"?"u":"")+'">'+L[0]+'</div>'+
+        '<div class="pin c-'+L[1]+'">'+i+'</div>'+
+        '<div class="pin c-'+R[1]+'">'+(i+1)+'</div>'+
+        '<div class="lbl r '+(R[1]=="x"?"u":"")+'">'+R[0]+'</div>';
+      host.appendChild(row);
+    }
+  })();
+</script>
+</body>
+</html>

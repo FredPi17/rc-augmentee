@@ -8,8 +8,8 @@ de server.py : il affiche l'IP dès le démarrage et surveille l'état du serveu
 Affiche sur un OLED SSD1306/SH1106 128x64 :
   - adresse IP + WiFi (SSID + signal)
   - statut server.py (via la fraîcheur de /tmp/rc_status.json) + client connecté
-  - santé système (pigpiod, caméra, SPI)
-  - tension/% batterie moteur (relayés par server.py)
+  - santé système (pigpiod, caméra)
+  - état de l'alimentation du Pi (sous-tension, relayé par server.py)
 
 La logique de collecte et de formatage est séparée du rendu OLED pour être
 testable sans matériel.
@@ -70,10 +70,6 @@ def service_active(name):
     return _run(['systemctl', 'is-active', name]).strip() == 'active'
 
 
-def spi_available():
-    return os.path.exists('/dev/spidev0.0')
-
-
 def camera_present():
     """True si une caméra est détectée (test lent → à mettre en cache)."""
     txt = _run(['rpicam-hello', '--list-cameras'], timeout=5.0)
@@ -113,10 +109,9 @@ def build_lines(info):
         f"IP {ip}",
         f"Wifi {wifi}"[:21],
         f"srv:{yn(info.get('server_up'))}  cli:{yn(info.get('client'))}",
-        f"pgp:{yn(info.get('pigpio'))} cam:{yn(info.get('camera'))} spi:{yn(info.get('spi'))}",
+        f"pgp:{yn(info.get('pigpio'))}  cam:{yn(info.get('camera'))}",
     ]
-    mv, mp = info.get('motor_v'), info.get('motor_pct')
-    lines.append(f"bat {mv:.1f}V {mp}%" if mv is not None and mp is not None else "bat ---")
+    lines.append("alim Pi: " + ("SOUS-TENSION" if info.get('undervolt') else "OK"))
     return lines
 
 
@@ -131,10 +126,8 @@ def gather(cam_status):
         'server_up': server_up,
         'client': data.get('client'),
         'pigpio': service_active('pigpiod'),
-        'spi': spi_available(),
         'camera': cam_status,
-        'motor_v': data.get('motor_v'),
-        'motor_pct': data.get('motor_pct'),
+        'undervolt': data.get('pi_undervolt'),
     }
 
 

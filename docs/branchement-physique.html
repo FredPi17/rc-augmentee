@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Branchement physique — Voiture RC (rails alim &amp; masse)</title>
+<style>
+  body{margin:0;padding:24px;background:#eceae6;display:flex;justify-content:center}
+  @media (prefers-color-scheme:dark){body{background:#141416}}
+  .panel{background:#fff;border:1px solid #d9d7d2;border-radius:12px;padding:14px 16px;max-width:940px;width:100%;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  .t{font-size:16px;font-weight:700;color:#1c1c1e}
+  .s{font-size:12px;color:#6b6b70;margin:2px 0 8px}
+  .leg{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:#444;margin-bottom:6px}
+  .leg i{display:inline-block;width:14px;height:5px;vertical-align:middle;border-radius:2px}
+  .notes{margin-top:10px;border-top:1px solid #eee;padding-top:10px;font-size:12px;color:#333;line-height:1.55}
+  .notes p{margin:4px 0}.notes b{color:#1c1c1e}.warn{color:#a33}
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="t">Branchement physique — rails d'alimentation &amp; masse commune</div>
+  <div class="s">Recopie chaque liaison sur ta carte. <b>Point plein</b> = fil soudé au rail ; un trait qui <b>croise</b> un rail sans point n'est PAS relié.</div>
+  <div class="leg">
+    <span><i style="background:#c0392b"></i> VSERVO +5–6 V (BEC ESC)</span>
+    <span><i style="background:#1e8e4f"></i> 3V3 (Pi)</span>
+    <span><i style="background:#333"></i> GND commun</span>
+    <span><i style="background:#2f6fb0"></i> signal → broche Pi</span>
+  </div>
+  <svg viewBox="0 0 900 405" width="100%" role="img" aria-label="Schéma de branchement physique en bus">
+    <!-- BUSES -->
+    <line x1="250" y1="95" x2="884" y2="95" stroke="#c0392b" stroke-width="6" stroke-linecap="round"/>
+    <text x="250" y="86" font-size="12" font-weight="700" fill="#c0392b">RAIL VSERVO  (+5–6 V)  ← BEC de l'ESC</text>
+    <line x1="250" y1="145" x2="884" y2="145" stroke="#1e8e4f" stroke-width="6" stroke-linecap="round"/>
+    <text x="250" y="136" font-size="12" font-weight="700" fill="#1e8e4f">RAIL 3V3  ← broche 1 du Pi</text>
+    <line x1="30" y1="200" x2="884" y2="200" stroke="#333" stroke-width="8" stroke-linecap="round"/>
+    <text x="34" y="192" font-size="12" font-weight="700" fill="#333">MASSE COMMUNE — GND  (tout s'y raccorde)</text>
+
+    <!-- PI -->
+    <rect x="30" y="60" width="200" height="118" rx="8" fill="#eef3ee" stroke="#3a7d5d" stroke-width="1.5"/>
+    <text x="130" y="82" font-size="12.5" font-weight="700" fill="#1c1c1e" text-anchor="middle">Raspberry Pi Zero W</text>
+    <text x="42" y="102" font-size="10.5" fill="#444">fournit le 3V3 (pin 1)</text>
+    <text x="42" y="118" font-size="10.5" fill="#444">fournit le GND (pins 6/9/…)</text>
+    <text x="42" y="134" font-size="10.5" fill="#444">reçoit les signaux ↓</text>
+    <text x="42" y="150" font-size="10.5" fill="#444">alim: power bank USB</text>
+    <text x="42" y="166" font-size="10" fill="#a33">(séparée — jamais VSERVO)</text>
+    <path d="M230 110 H244 V145" fill="none" stroke="#1e8e4f" stroke-width="2.5"/>
+    <circle cx="244" cy="145" r="4" fill="#1e8e4f"/>
+    <path d="M230 160 H238 V200" fill="none" stroke="#333" stroke-width="2.5"/>
+    <circle cx="238" cy="200" r="4.5" fill="#333"/>
+
+    <!-- CARD 1 : Servos & ESC -->
+    <line x1="70" y1="260" x2="70" y2="95" stroke="#c0392b" stroke-width="2.5"/><circle cx="70" cy="95" r="4" fill="#c0392b"/>
+    <line x1="98" y1="260" x2="98" y2="200" stroke="#333" stroke-width="2.5"/><circle cx="98" cy="200" r="4.5" fill="#333"/>
+    <rect x="30" y="260" width="200" height="132" rx="8" fill="#fbf3e8" stroke="#c07a1e" stroke-width="1.5"/>
+    <text x="42" y="280" font-size="12" font-weight="700" fill="#1c1c1e">Servos &amp; ESC</text>
+    <text x="42" y="298" font-size="10.5" fill="#2f6fb0">ESC signal → pin 12</text>
+    <text x="42" y="314" font-size="10.5" fill="#2f6fb0">Servo direction → pin 32</text>
+    <text x="42" y="330" font-size="10.5" fill="#2f6fb0">Servo caméra → pin 33</text>
+    <text x="42" y="348" font-size="10" fill="#444">fil +V (rouge) → VSERVO</text>
+    <text x="42" y="363" font-size="10" fill="#444">fil GND (noir) → masse</text>
+    <text x="42" y="381" font-size="9.5" fill="#a33">⚠ +V = sortie BEC de l'ESC</text>
+
+    <!-- CARD 2 : LEDs -->
+    <line x1="278" y1="260" x2="278" y2="200" stroke="#333" stroke-width="2.5"/><circle cx="278" cy="200" r="4.5" fill="#333"/>
+    <rect x="245" y="260" width="200" height="132" rx="8" fill="#fbeeea" stroke="#b5462e" stroke-width="1.5"/>
+    <text x="257" y="280" font-size="12" font-weight="700" fill="#1c1c1e">Éclairage — 3 LED</text>
+    <text x="257" y="300" font-size="10" fill="#444">chaque LED : broche →220Ω→ LED(+)</text>
+    <text x="257" y="316" font-size="10" fill="#444">LED(−) → masse (GND)</text>
+    <text x="257" y="336" font-size="10.5" fill="#2f6fb0">avant → pin 18</text>
+    <text x="257" y="352" font-size="10.5" fill="#2f6fb0">arrière → pin 22</text>
+    <text x="257" y="368" font-size="10.5" fill="#2f6fb0">recul → pin 16</text>
+
+    <!-- CARD 4 : OLED -->
+    <line x1="490" y1="260" x2="490" y2="145" stroke="#1e8e4f" stroke-width="2.5"/><circle cx="490" cy="145" r="4" fill="#1e8e4f"/>
+    <line x1="518" y1="260" x2="518" y2="200" stroke="#333" stroke-width="2.5"/><circle cx="518" cy="200" r="4.5" fill="#333"/>
+    <rect x="460" y="260" width="200" height="132" rx="8" fill="#f2ecf7" stroke="#7a4fa3" stroke-width="1.5"/>
+    <text x="472" y="280" font-size="12" font-weight="700" fill="#1c1c1e">Écran OLED I²C</text>
+    <text x="472" y="300" font-size="10.5" fill="#444">VCC → 3V3</text>
+    <text x="472" y="316" font-size="10.5" fill="#444">GND → masse</text>
+    <text x="472" y="336" font-size="10.5" fill="#2f6fb0">SDA → pin 3</text>
+    <text x="472" y="352" font-size="10.5" fill="#2f6fb0">SCL → pin 5</text>
+  </svg>
+
+  <div class="notes">
+    <p><b>Entrées d'alimentation :</b> ① Power bank USB → alimente le Pi. ② Batterie de l'ESC (BEC) → alimente le rail VSERVO (servos + ESC). </p>
+    <p><b class="warn">Masse commune obligatoire :</b> relie ensemble les GND du Pi, de l'ESC/BEC, des LED et des servos — c'est le seul point commun entre les alimentations.</p>
+    <p><b>Avant de brancher le Pi :</b> vérifie au multimètre qu'il n'y a PAS de court entre 3V3, VSERVO et GND.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -115,17 +115,6 @@ else
   warn "utilisateur '$USER' pas dans le groupe gpio → sudo usermod -aG gpio $USER (puis relogin)"
 fi
 echo "  ${BLUE}i${RST} GPIO attendus par server.py : $GPIOS (dir=12 cam=13 esc=18 leds=24/25/23)"
-# SPI (MCP3008 pour le monitoring batterie moteur)
-if [ -e /dev/spidev0.0 ]; then
-  ok "SPI activé (/dev/spidev0.0) — MCP3008 batterie"
-else
-  warn "SPI non activé (/dev/spidev0.0 absent) → raspi-config ou 'dtparam=spi=on' (monitoring batterie désactivé)"
-fi
-if python3 -c "import spidev" 2>/dev/null; then
-  ok "module python 'spidev' importable"
-else
-  warn "module 'spidev' manquant → pip install spidev (requis par MCP3008)"
-fi
 # I2C (écran OLED de statut, display.py)
 if [ -e /dev/i2c-1 ]; then
   ok "I2C activé (/dev/i2c-1) — écran OLED"
